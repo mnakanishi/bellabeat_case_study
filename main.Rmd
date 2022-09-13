@@ -1,0 +1,189 @@
+---
+title: "Activity vs. Sleep"
+author: "Masaki Nakanishi"
+date: "2022-09-01"
+output: html_document
+---
+
+## Introduction
+
+This project aims to investigate how people use existing smart devices and to give a high-level recommendation for how the findings can inform Bellabeat marketing strategy. 
+
+Bellabeat is a high-tech company that manufactures health-focused smart devices including bracelet, necklace, clip, watch, and water bottle. The smart bracelet, necklace, clip, and watch can track users' activity, sleep and stress. The smart water bottle can track users' daily water intake. All the smart devices can be connected to Bellabeat app so that users can review their comprehensive health-related habits and information. 
+
+In this project, we, Bellabeat marketing analytics team, analyzed a publicly-available dataset to gain an insight into how people who alreay own smart devices use them, and revealed potential marketing opportunities for Bellabeat's growth. 
+
+## Questions
+
+To identify some trends in smart device usage, we will aim to answer the following questions:
+
+* Do people use their smart devices for tracking specific information (e.g., activity, sleep, and stress)? For example, do they use their devices for tracking activity rather than stress and sleep, or vice versa? 
+
+* Assuming that most people use their devices for tracking their activity, during what kinds of activities (e.g., light, moderate, and intensive activities) do they use them the most? 
+
+To address the questions, we will conduct a series of studies. 
+
+## Study 1
+
+### Hypothesis
+
+* People use their smart devices for tracking activity or stress rather than sleep.
+
+    Since sleep quality can be tracked by different devices such as a smartphone, people who bought a wearable smart device might be interested in the information that can only be tracked by wearable devices.
+    
+### Materials and Methods
+
+We used FitBit Fitness Tracker Data (https://www.kaggle.com/datasets/arashnic/fitbit) to test the hypothesis. FitBit is also a company that manufactures smart devices. Their smart devices can also track users' activity and sleep. The FitBit Fitness Tracker Data contains personal tracker data including physical activity, heart rate, and sleep monitoring obtained from ## participants recorded between 04-12-2016 - 05-12-2016. 
+
+Using the data, we compared the participants' usage of the FitBit for monitoring their physical activity and sleep. The metrics we used were:
+* The number of days each participant used to track his/her physical activity
+* The number of days each participant used to track his/her sleep
+
+We submitted the two metrics into a paired t-test to test a null-hypothesis: there is no difference in the mean numbers of days used to track phsyical activity and sleep. 
+
+### Analysis
+
+#### Data cleaning in SQL
+We first cleaned the data using SQL. We removed invalided observations where all the columns are 0 (indicating he/she did not use his/her device on that day) and computed the metrics (the numbers of days each participant used to track his/her physical activity and sleep) using the raw daily usage information in Fitabase Data 4.12.16-5.12.16/dailyActivity_merged.csv and Fitabase Data 4.12.16-5.12.16/sleepDay_merged.csv using the following queries.
+
+SELECT
+  ID, COUNT(ActivityDate) AS NumOfActiveDays
+FROM
+  `bellabeat-case-study-361204.FitBit_Fitness_Tracker_Data.Daily_Activity`
+WHERE
+  TotalDistance != 0
+GROUP BY
+  ID
+
+SELECT
+  ID, COUNT(SleepDay) AS NumOfSleepDays
+FROM
+  `bellabeat-case-study-361204.FitBit_Fitness_Tracker_Data.Daily_Sleep`
+WHERE
+  TotalSleepRecords != 0
+GROUP BY
+  ID
+
+We then saved the tables as numOfDaysForActivityTrack.csv and numOfDaysForSleepTrack.csv.
+
+#### Preparation
+
+A package that was necessary for the following analysis was installed as follows:
+
+```{r}
+install.packages("tidyverse")
+library(tidyverse)
+```
+
+Two data tables were imported and merged together. In addtion, the data cells that contained NA were replaced by 0, and a new column that contained the participant ID in a character type was added.
+
+```{r}
+activity_data = read_csv("Fitabase_Data_4_12_16-5_12_16/numOfDaysForActivityTrack.csv")
+sleep_data = read_csv("Fitabase_Data_4_12_16-5_12_16/numOfDaysForSleepTrack.csv")
+data_merged = merge(x = activity_data, y = sleep_data, by = "ID", all = TRUE)
+data_merged = mutate(data_merged, char_ID = as.character(data_merged$ID))
+data_merged[is.na(data_merged)] <- 0
+head(data_merged)
+```
+
+For the following visualization, the merged data were reformated to a long table with three columns including participant ID, purpose of using the device (i.e., Activity or Sleep), and the number of days they used the device for a purpose. 
+
+```{r}
+long_data = data.frame(Participant =  c(data_merged$char_ID, data_merged$char_ID), Purpose = rep(c('Activity', 'Sleep'), each = length(data_merged$ID)), NumOfDays = c(data_merged$NumOfActiveDays, data_merged$NumOfSleepDays))
+head(long_data)
+```
+
+We also computed the averaged number of days for each purpose across participants and its standard errors.
+
+```{r}
+sum_data = data.frame(Purpose = c("Activity","Sleep"), Average = c(mean(data_merged$NumOfActiveDays), mean(data_merged$NumOfSleepDays)), SE = c(sd(data_merged$NumOfActiveDays)/sqrt(length(data_merged$ID)), sd(data_merged$NumOfSleepDays)/sqrt(length(data_merged$ID))))
+sum_data
+```
+#### Visualization
+
+The following bar plot indicates the number of days each participant used the device for tracking activity and sleep.
+
+```{r}
+ggplot(long_data, aes(y = Participant, x = NumOfDays, fill=Purpose)) + 
+  geom_bar(position = 'dodge', stat = "identity", width = 0.8) +
+  labs(title="The numbers of days used for tracking for each individual", y = "Participants", x = "The number of days") 
+```
+
+The following bar plot indicates their average across participants. The error bars indicate the standard error.
+
+```{r}
+ggplot(sum_data, aes(x=Purpose, y=Average)) + 
+  geom_bar(stat="identity", position=position_dodge()) + 
+  geom_errorbar(aes(ymin=Average-SE, ymax=Average+SE), width=.1, position=position_dodge(.9)) +
+  labs(title="Averaged number of days used for tracking across participants", x="Purpose", y="Averaged number of days")
+```
+As the bar chart indicated, people tended to use their devices for tracking activity rather than sleep. A paired t-test revealed that there was a statistically signiticant difference between the activity and sleep (p < 0.001).
+
+```{r}
+t.test(data_merged$NumOfActiveDays, data_merged$NumOfSleepDays, paired=TRUE)
+```
+
+
+```{r}
+#r = cor(data_merged$NumOfActiveDays, data_merged$NumOfSleepDays)
+#ggplot(data_merged, mapping=aes(x=NumOfActiveDays, y=NumOfSleepDays)) + geom_point() +
+#  geom_smooth(method="lm") + 
+#  labs(title="Association between the numbers of days used for tracking activity and sleep", x="The number of days #(Activity)", y = "The number of days (Sleep)") +
+#  annotate(geom = "text", x = 4, y = 31, label=sprintf("R = %.2f", r))
+```
+
+### Summary
+
+The results showed that people tended to use FitBit device for tracking their activity rather than their sleep, which supported our hypothesis. Note that the participants tracked their activity on 26.12 $\pm$ 1.19 days out of 31 days on average. On the other hand, they tracked their sleep only on 12.52 $\pm$ 2.17 days on average. This indicates that people are much more intersted in monitoring their activity than their sleep. 
+
+
+## Study 2
+
+```{r}
+activity_merged = read_csv("Fitabase_Data_4_12_16-5_12_16/activityLogPercentage.csv")
+head(activity_merged)
+```
+
+```{r}
+activity_wide = summarize(activity_merged, ID, LightlyActivePerc, FairlyActivePerc, VeryActivePerc)
+activity_long = gather(activity_wide, Activity, Percentage, -ID)
+activity_long = mutate(activity_long, char_ID = as.character(activity_long$ID))
+head(activity_long)
+```
+
+
+```{r}
+ggplot(activity_long, aes(y = char_ID, x = Percentage, fill=Activity)) + 
+  geom_col(position="fill", stat="identity") +
+  #theme(axis.text.x = element_text(angle=90)) + 
+  labs(title = "", y = "Participants", x = "Active duration (%)") +
+  scale_fill_discrete("", labels = c('Fairly Active', 'Light Active', 'Very Active'))
+  #scale_fill_manual("", values = c('FairlyActivePerc'='blue', 'LightlyActivePerc'='red', 'VeryActivePerc'='green'), labels = c('Fairly Active', 'Light Active', 'Very Active'))
+```
+
+```{r}
+activity_sum = data.frame(Purpose = c("LightlyActive","FairlyActive", "VeryActive"), Average = c(mean(activity_merged$LightlyActiveMinutesTotal), mean(activity_merged$FairlyActiveMinutesTotal), mean(activity_merged$VeryActiveMinutesTotal)), SE = c(sd(activity_merged$LightlyActiveMinutesTotal)/sqrt(length(activity_merged$ID)), sd(activity_merged$FairlyActiveMinutesTotal)/sqrt(length(activity_merged$ID)), sd(activity_merged$VeryActiveMinutesTotal)/sqrt(length(activity_merged$ID))))
+activity_sum
+```
+
+
+```{r}
+ggplot(activity_sum, aes(x=Purpose, y=Average)) + 
+  geom_bar(stat="identity", position=position_dodge()) + 
+  geom_errorbar(aes(ymin=Average-SE, ymax=Average+SE), width=.1, position=position_dodge(.9)) +
+  labs(title="Averaged usage for tracking activity in 30 days across participants", x="Purpose", y="Averaged active duration [min]")
+```
+
+```{r}
+active_min_wide = summarize(activity_merged, ID, LightlyActiveMinutesTotal, FairlyActiveMinutesTotal, VeryActiveMinutesTotal)
+active_min_long = gather(active_min_wide, Activity, Duration, -ID)
+active_min_long = mutate(active_min_long, char_ID = as.character(active_min_long$ID))
+head(active_min_long)
+```
+```{r}
+one.way <- aov(Duration ~ Activity, data = active_min_long)
+summary(one.way)
+```
+
+
+
