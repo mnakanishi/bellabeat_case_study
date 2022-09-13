@@ -1,5 +1,5 @@
 ---
-title: "Activity vs. Sleep"
+title: "Bellabeat Case Study: FitBit Usage Trend Analysis"
 author: "Masaki Nakanishi"
 date: "2022-09-01"
 output: html_document
@@ -71,7 +71,7 @@ We then saved the tables as numOfDaysForActivityTrack.csv and numOfDaysForSleepT
 A package that was necessary for the following analysis was installed as follows:
 
 ```{r}
-install.packages("tidyverse")
+install.packages("tidyverse", repos="http://cran.us.r-project.org")
 library(tidyverse)
 ```
 
@@ -139,10 +139,64 @@ The results showed that people tended to use FitBit device for tracking their ac
 
 ## Study 2
 
+We found that most of the FitBit users use their devices for tracking their activities. Now we are interested in investigating what kind of activities (e.g., light, moderate, and intensive) they perform while using the devices.
+
+### Hypothesis
+
+* People use their smart devices for tracking light activity rather than moderate and intensive activities. 
+
+Since light activity such as walking is a part of daily activity, people use their smart devices mostly while performing light activity.
+
+### Materials and Methods
+
+Again, we used FitBit Fitness Tracker Data (https://www.kaggle.com/datasets/arashnic/fitbit) to test the hypothesis.
+
+Using the data, we compared the duration of using their FitBit for tracking different types of activity. The metrics we used were:
+* Total lightly, fairly, and very active duration in minutes.
+* Ratio of duration of each types of activities to the total active duration.
+
+We submitted the two metrics into a one-way repeated measures analysis of variance (ANOVA) to test a null-hypothesis: there is no difference in the mean active durations among three types of activities. 
+
+### Analysis
+
+#### Data cleaning in SQL
+
+We removed invalided observations where all the columns are 0 (indicating he/she did not use his/her device on that day) and computed the metrics (total lightly, fairly, and very active duration in minutes, and Ratio of duration of each types of activities to the total active duration) using the raw daily usage information in Fitabase Data 4.12.16-5.12.16/dailyActivity_merged.csv using the following queries.
+
+WITH data_converted AS (
+  SELECT
+    ID, 
+    sum(LightlyActiveMinutes) AS LightlyActiveMinutesTotal,
+    sum(FairlyActiveMinutes) AS FairlyActiveMinutesTotal,
+    sum(VeryActiveMinutes) AS VeryActiveMinutesTotal,
+    (sum(LightlyActiveMinutes)+sum(FairlyActiveMinutes)+sum(VeryActiveMinutes)) AS ActiveMinutesTotal
+  FROM
+    `bellabeat-case-study-361204.FitBit_Fitness_Tracker_Data.Daily_Activity`
+  WHERE
+    TotalDistance != 0
+  GROUP BY ID
+  ORDER BY ID
+)
+
+SELECT
+  ID, 
+  LightlyActiveMinutesTotal,
+  FairlyActiveMinutesTotal,
+  VeryActiveMinutesTotal,
+  ActiveMinutesTotal,
+  LightlyActiveMinutesTotal/ActiveMinutesTotal*100 AS LightlyActivePerc,
+  FairlyActiveMinutesTotal/ActiveMinutesTotal*100 AS FairlyActivePerc,
+  VeryActiveMinutesTotal/ActiveMinutesTotal*100 AS VeryActivePerc
+FROM data_converted
+
+We then saved the table as activityLogPercentage.csv for the following analysis in R. In R, the data table looks like as follows:
+
 ```{r}
 activity_merged = read_csv("Fitabase_Data_4_12_16-5_12_16/activityLogPercentage.csv")
 head(activity_merged)
 ```
+
+We converted the data table to a long format from a wide format and added a new column that contained the participant ID in a character type was added as follows:
 
 ```{r}
 activity_wide = summarize(activity_merged, ID, LightlyActivePerc, FairlyActivePerc, VeryActivePerc)
@@ -151,6 +205,7 @@ activity_long = mutate(activity_long, char_ID = as.character(activity_long$ID))
 head(activity_long)
 ```
 
+The followin chart indicates how long each participants have used their devices for tracking light, moderate, and intensive activity in percentage. As shown in the chart, all the participants mostly used their devices for monitoring light activity.
 
 ```{r}
 ggplot(activity_long, aes(y = char_ID, x = Percentage, fill=Activity)) + 
@@ -161,11 +216,14 @@ ggplot(activity_long, aes(y = char_ID, x = Percentage, fill=Activity)) +
   #scale_fill_manual("", values = c('FairlyActivePerc'='blue', 'LightlyActivePerc'='red', 'VeryActivePerc'='green'), labels = c('Fairly Active', 'Light Active', 'Very Active'))
 ```
 
+We also computed the averaged duration for each activity across participants and its standard errors as follows:
+
 ```{r}
 activity_sum = data.frame(Purpose = c("LightlyActive","FairlyActive", "VeryActive"), Average = c(mean(activity_merged$LightlyActiveMinutesTotal), mean(activity_merged$FairlyActiveMinutesTotal), mean(activity_merged$VeryActiveMinutesTotal)), SE = c(sd(activity_merged$LightlyActiveMinutesTotal)/sqrt(length(activity_merged$ID)), sd(activity_merged$FairlyActiveMinutesTotal)/sqrt(length(activity_merged$ID)), sd(activity_merged$VeryActiveMinutesTotal)/sqrt(length(activity_merged$ID))))
 activity_sum
 ```
 
+The following bar plot indicates the averaged duration the participants used their devices to monitor each activity in minutes. 
 
 ```{r}
 ggplot(activity_sum, aes(x=Purpose, y=Average)) + 
@@ -174,16 +232,37 @@ ggplot(activity_sum, aes(x=Purpose, y=Average)) +
   labs(title="Averaged usage for tracking activity in 30 days across participants", x="Purpose", y="Averaged active duration [min]")
 ```
 
+To perform a statistical test, we made another long data table that contained total duration for each activity for each individual as follows:
+
 ```{r}
 active_min_wide = summarize(activity_merged, ID, LightlyActiveMinutesTotal, FairlyActiveMinutesTotal, VeryActiveMinutesTotal)
 active_min_long = gather(active_min_wide, Activity, Duration, -ID)
 active_min_long = mutate(active_min_long, char_ID = as.character(active_min_long$ID))
 head(active_min_long)
 ```
+
+As the bar plot indicated, all the participants tended to use their devices for tracking light activity. An one-way repeated measures ANOVA revealed that there was a statistically singificant main effect of the type of activity (p < 0.001) as follows:
+
 ```{r}
 one.way <- aov(Duration ~ Activity, data = active_min_long)
 summary(one.way)
 ```
 
+### Summary
 
+The results showed that people are nearly only interested in tracking light activity rather than moderate and intensive activities using their FitBit, which supported our hypothesis. The averaged duration for tracking light activity across participants was 5492.21 $\pm$ 405.90 min, which was about 85% of the total activity tracking duration, and those for tracking moderate and intensive activities were 386.29 $\pm$ 63.82 min and 601.88 $\pm$ 128.09 min, respectively. 
 
+## General discussions and recommendation
+
+In this project, we analyzed the FitBit usage data to investigate how FitBit users have been using their devices to inform Bellabeat's marketing stragety. The analysis revealed that:
+
+* FitBit users are more interested in monitoring their active duration.
+* FitBit users are in general lightly active.
+
+Assuming that potential users of FitBit and Bellabeat's devices are greatly overlapped, this analytics project suggested that the potential users of Bellabeat's products would be more interested in monitoring casual activities (e.g., walking). Therefore, Bellabeat should put in more efforts on implementing products, functionality and services related to monitoring and enhancing activity and advertise them. For example:
+
+* Produce many different types of devices that can be worn casually and looks nice on casual clothes. The existing necklace and bracelet devices would be a Bellabeat's strenth as FitBit does not have any devices like them. Improving the design of the devices, e.g., by collaborating with famous fashion brands, would attract more customers.
+
+* Add functions to keep up users' motivation to be active. For example, when a device detect that an user is not active, the device reminds him/her to stand up, go for a walk, and so on.
+
+The limitation of this analysis is that we did not have data related to the users' stress tracking. Therefore, there might be some users who are more interested in tracking their stress levels than their activities. 
