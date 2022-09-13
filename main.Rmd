@@ -1,8 +1,10 @@
 ---
-title: "Bellabeat Case Study: FitBit Usage Trend Analysis"
+title: 'Bellabeat Case Study: FitBit Usage Trend Analysis'
 author: "Masaki Nakanishi"
 date: "2022-09-01"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ## Introduction
